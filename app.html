@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackbox recorder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<header class="band">
+  <a class="brand" href="./">Blackbox</a>
+  <div class="flight"><input id="fName" aria-label="Flight name" spellcheck="false"><span id="fMeta"></span></div>
+  <nav class="acts">
+    <button id="bImport">Import</button>
+    <button id="bRecord">Record live</button>
+    <button id="bReport">Incident report</button>
+    <button id="bCompare" hidden>Compare</button>
+    <button id="bExport">Export</button>
+    <button id="bSettings" class="quiet">Settings</button>
+  </nav>
+</header>
+
+<div class="shell">
+  <aside class="lib" aria-label="Flight library">
+    <h2>Samples</h2><ul id="libSamples"></ul>
+    <h2>Your flights</h2><ul id="libMine"></ul>
+    <label class="drop" id="drop"><input type="file" id="file" accept=".json,.jsonl,application/json" hidden>Drop a trace file here or <u>choose one</u></label>
+  </aside>
+
+  <main class="main">
+    <div class="gauges" id="gauges"></div>
+    <section class="tl" aria-label="Timeline">
+      <div class="tlbar">
+        <div class="transport">
+          <button id="tPrev" aria-label="Previous step" title="Previous step (←)">◀︎</button>
+          <button id="tPlay" aria-label="Play" title="Play (Space)">Play</button>
+          <button id="tNext" aria-label="Next step" title="Next step (→)">▶︎</button>
+          <select id="tSpeed" aria-label="Playback speed"><option value="1">1×</option><option value="4" selected>4×</option><option value="16">16×</option></select>
+          <span class="clock" id="tClock">00:00.0</span>
+        </div>
+        <div class="legend"><span class="lg user">User</span><span class="lg model">Model</span><span class="lg tool">Tool</span><span class="lg err">Error</span><span class="lg flag">Flag</span><button id="tFit">Fit</button></div>
+      </div>
+      <div class="tlwrap" id="tlwrap"><svg id="tl"></svg></div>
+    </section>
+    <div class="lower">
+      <section class="steps" aria-label="Steps"><div class="sh"><h2>Steps</h2><span id="flagCount"></span></div><ol id="steps"></ol></section>
+      <section class="insp" aria-label="Inspector" id="insp"></section>
+    </div>
+  </main>
+</div>
+
+<dialog id="dImport"><form method="dialog" class="sheet wide">
+  <h2>Import a trace</h2>
+  <p>Paste Anthropic or OpenAI messages (with tool calls), OpenTelemetry GenAI spans, or a Blackbox export. JSON or JSON Lines.</p>
+  <textarea id="impText" rows="12" spellcheck="false" placeholder='{"model": "claude-sonnet-5-5", "system": "...", "messages": [ ... ]}'></textarea>
+  <div class="err" id="impErr" hidden></div>
+  <div class="row"><button value="cancel" class="ghost">Cancel</button><button value="ok" id="impGo" class="go">Import</button></div>
+</form></dialog>
+
+<dialog id="dRecord"><form method="dialog" class="sheet wide">
+  <h2>Record a live run</h2>
+  <p>Claude gets the tools you tick and a task. Every step lands on the tape as it happens.</p>
+  <label>Task<textarea id="recTask" rows="3">Work out how many days are left until New Year's Day in Tokyo, then write and run a JavaScript snippet that prints a countdown in weeks and days.</textarea></label>
+  <label>System prompt<textarea id="recSys" rows="2">You are a careful agent. Use tools instead of guessing, and finish with a short answer.</textarea></label>
+  <fieldset><legend>Tools</legend><div id="recTools" class="tools"></div></fieldset>
+  <div class="grid2"><label>Max turns<input type="number" id="recTurns" value="10" min="1" max="30"></label><label>Model (optional)<input id="recModel" placeholder="Server default"></label></div>
+  <div class="err" id="recErr" hidden></div>
+  <div class="row"><button value="cancel" class="ghost">Cancel</button><button value="ok" id="recGo" class="go">Start recording</button></div>
+</form></dialog>
+
+<dialog id="dFork"><form method="dialog" class="sheet wide">
+  <h2>Fork from step <span id="forkN"></span></h2>
+  <p id="forkWhat"></p>
+  <label id="forkEditL">Edit<textarea id="forkEdit" rows="8" spellcheck="false"></textarea></label>
+  <div class="grid2"><label>Model<input id="forkModel" placeholder="Same as recorded"></label><label>Temperature<input id="forkTemp" type="number" min="0" max="1" step=".1" placeholder="Default"></label></div>
+  <label>Tools in the fork<select id="forkMode"><option value="auto">Live if built in, replay if recorded, otherwise simulated</option><option value="simulate">Simulate every tool with Claude</option></select></label>
+  <label>Max turns after the fork<input type="number" id="forkTurns" value="8" min="1" max="30"></label>
+  <div class="err" id="forkErr" hidden></div>
+  <div class="row"><button value="cancel" class="ghost">Cancel</button><button value="ok" id="forkGo" class="go">Fly the fork</button></div>
+</form></dialog>
+
+<dialog id="dReport"><div class="sheet report-sheet">
+  <div class="rtop"><h2>Incident report</h2><div><button id="repAI" class="go">Write the full report with Claude</button> <button id="repClose" class="ghost">Close</button></div></div>
+  <div id="repBody"></div>
+</div></dialog>
+
+<dialog id="dSettings"><form method="dialog" class="sheet">
+  <h2>Settings</h2>
+  <p>Recording, forking and reports use Claude through this site's key, or your own key pasted here (kept in this browser).</p>
+  <label>Anthropic API key<input id="sKey" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+  <label>Access code (if the owner set one)<input id="sCode" type="password" autocomplete="off"></label>
+  <label>Default model<input id="sModel" placeholder="claude-sonnet-5-5"></label>
+  <div class="grid2"><label>Price per 1M input tokens ($)<input id="sPin" type="number" step=".01" min="0"></label><label>Price per 1M output tokens ($)<input id="sPout" type="number" step=".01" min="0"></label></div>
+  <div class="row"><button value="cancel" class="ghost">Close</button><button value="ok" id="sSave" class="go">Save</button></div>
+</form></dialog>
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>

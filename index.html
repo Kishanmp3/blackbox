@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackbox: a flight recorder for AI agents</title>
+<meta name="description" content="Record every step an AI agent takes. Scrub the timeline, find the loop, fork from any step with a change, and get an incident report.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--orange:#FF5F15;--deep:#E04A06;--black:#000;--tape:#121212;--white:#F6F5F0;--cyan:#5CE1E6;--red:#FF3B3B;--amber:#FFC24A}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Archivo",system-ui,sans-serif;background:var(--orange);color:var(--black);font-size:18px;line-height:1.5;overflow-x:hidden}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--black);outline-offset:3px}
+.mono{font-family:"JetBrains Mono",monospace}
+.band{background:repeating-linear-gradient(115deg,rgba(255,255,255,0) 0 40px,rgba(255,255,255,.55) 40px 44px,rgba(255,255,255,0) 44px 120px),linear-gradient(180deg,#fbfaf6,#e6e4dc);color:var(--black);display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px clamp(18px,4vw,48px);border-top:3px solid var(--black);border-bottom:3px solid var(--black)}
+.band .stencil{font-weight:900;font-stretch:125%;font-size:clamp(20px,2.6vw,34px);letter-spacing:.06em;text-transform:uppercase}
+.band a{font-weight:700;font-stretch:110%;text-decoration:none;font-size:16px;border:2.5px solid var(--black);padding:7px 14px;background:var(--orange)}
+.band a:hover{background:var(--black);color:var(--orange)}
+.hero{padding:clamp(34px,4.4vw,60px) clamp(18px,4vw,48px) clamp(40px,6vw,70px);position:relative}
+.screws::before,.screws::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffb48a,#b33a00 70%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}
+.screws::before{left:16px;top:16px}.screws::after{right:16px;top:16px}
+h1{font-weight:850;font-stretch:118%;font-size:clamp(48px,7.4vw,128px);line-height:.88;letter-spacing:-.02em}
+.lede{font-size:clamp(18px,1.6vw,22px);max-width:44ch;margin-top:22px;font-weight:450}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.btn{font-weight:750;font-stretch:112%;font-size:18px;text-decoration:none;padding:14px 22px;background:var(--black);color:var(--orange);border:3px solid var(--black);display:inline-block}
+.btn:hover{background:var(--white);color:var(--black)}
+.btn.alt{background:transparent;color:var(--black)}
+.btn.alt:hover{background:var(--black);color:var(--orange)}
+.top{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(24px,4vw,60px);align-items:end}
+.casing-note{font-weight:600;font-stretch:90%;font-size:15px;max-width:34ch;border-left:4px solid var(--black);padding-left:14px}
+@media (max-width:900px){.top{grid-template-columns:1fr}}
+/* the recorder window */
+.window{margin-top:clamp(28px,3.5vw,44px);background:var(--tape);border:4px solid var(--black);border-radius:14px;box-shadow:inset 0 0 0 2px #2a2a2a,0 18px 0 -6px var(--deep);color:#d8d8d2;overflow:hidden}
+.wtop{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid #2a2a2a;font-family:"JetBrains Mono",monospace;font-size:12.5px;gap:16px;flex-wrap:wrap}
+.wtop b{color:var(--white);font-weight:500}
+.rec{display:inline-flex;align-items:center;gap:8px;color:var(--red)}
+.rec i{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.wbody{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+.tape{position:relative;padding:18px 18px 12px}
+.tape svg{width:100%;height:auto;display:block;overflow:visible}
+.xcript{border-left:1px solid #2a2a2a;padding:16px 18px;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.6;min-height:260px}
+.xcript .t{color:#7b7b74}
+.xcript .k{display:inline-block;min-width:58px;font-weight:700}
+.xcript .model{color:var(--orange)}.xcript .tool{color:var(--cyan)}.xcript .user{color:var(--white)}.xcript .err{color:var(--red)}
+.xcript div{opacity:.45;transition:opacity .3s}
+.xcript div.now{opacity:1}
+.xcript p{white-space:pre-wrap;color:#efefe8;margin:2px 0 10px}
+.flagline{font-family:"JetBrains Mono",monospace;font-size:12.5px;padding:10px 18px;border-top:1px solid #2a2a2a;color:var(--red);min-height:40px}
+@media (max-width:900px){.wbody{grid-template-columns:1fr}.xcript{border-left:0;border-top:1px solid #2a2a2a;min-height:0}}
+@media (prefers-reduced-motion:reduce){.rec i{animation:none}}
+section{padding:clamp(70px,9vw,130px) clamp(18px,4vw,48px);position:relative}
+.wrap{max-width:1240px;margin:0 auto}
+h2{font-weight:850;font-stretch:115%;font-size:clamp(42px,5.6vw,88px);line-height:.9;letter-spacing:-.015em;max-width:16ch}
+.sublede{font-size:20px;max-width:46ch;margin-top:18px}
+.params{width:100%;border-collapse:collapse;margin-top:52px;font-size:17px}
+.params th{text-align:left;font-weight:700;font-stretch:110%;font-size:14px;padding:10px 12px;border-bottom:3px solid var(--black)}
+.params td{padding:16px 12px;border-bottom:1.5px solid var(--black);vertical-align:top}
+.params td:first-child{font-weight:800;font-stretch:112%;font-size:22px;white-space:nowrap}
+.params td.mono{font-size:14px;white-space:nowrap}
+.dark{background:var(--black);color:var(--white)}
+.dark h2{color:var(--orange)}
+.forkgrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:clamp(30px,5vw,70px);margin-top:56px;align-items:center}
+.forkgrid svg{width:100%;height:auto}
+.modes{list-style:none;display:flex;flex-direction:column;gap:20px}
+.modes b{display:block;font-weight:800;font-stretch:112%;font-size:24px}
+.modes span{color:#bdbdb4}
+.modes li{border-left:4px solid var(--cyan);padding-left:16px}
+.modes li:nth-child(2){border-color:var(--amber)}.modes li:nth-child(3){border-color:var(--orange)}
+@media (max-width:900px){.forkgrid{grid-template-columns:1fr}}
+.report{margin-top:56px;background:var(--white);border:3px solid var(--black);box-shadow:12px 12px 0 var(--black);max-width:980px}
+.rhead{display:grid;grid-template-columns:1fr auto auto;border-bottom:3px solid var(--black)}
+.rhead > div{padding:12px 16px;border-right:1.5px solid var(--black)}
+.rhead > div:last-child{border-right:0}
+.rhead small{display:block;font-size:12px;font-weight:600;color:#555}
+.rhead b{font-weight:800;font-stretch:110%;font-size:19px}
+.rrow{display:grid;grid-template-columns:200px 1fr;border-bottom:1.5px solid var(--black)}
+.rrow:last-child{border-bottom:0}
+.rrow > div:first-child{padding:16px;border-right:1.5px solid var(--black);font-weight:800;font-stretch:110%;font-size:16px;background:#ecebe4}
+.rrow > div:last-child{padding:16px;font-size:17px}
+.rrow ol{margin-left:1.2em}
+.sev{display:inline-block;background:var(--red);color:#fff;font-weight:800;padding:2px 10px;font-size:15px}
+@media (max-width:700px){.rrow{grid-template-columns:1fr}.rrow > div:first-child{border-right:0;border-bottom:1.5px solid var(--black)}.rhead{grid-template-columns:1fr}}
+.formats{display:flex;flex-wrap:wrap;gap:12px;margin-top:40px}
+.formats span{border:3px solid var(--black);padding:10px 16px;font-weight:750;font-stretch:110%;font-size:18px}
+.end{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap}
+footer{border-top:3px solid var(--black);padding:20px clamp(18px,4vw,48px);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-weight:600;font-size:15px}
+</style>
+</head>
+<body>
+<div class="band"><span class="stencil">Agent flight recorder</span><a href="app.html">Open the recorder</a></div>
+
+<header class="hero screws">
+  <h1>Every agent run,<br>on tape.</h1>
+  <div class="top">
+    <div>
+      <p class="lede">Blackbox records each model call and tool call your agent makes. When a run goes wrong, rewind to the exact step, change one thing, and fly it again.</p>
+      <div class="cta"><a class="btn" href="app.html">Open the recorder</a><a class="btn alt" href="app.html#record">Record a live run</a></div>
+    </div>
+    <p class="casing-note">Bright orange so you can find it after a crash. Works with Anthropic and OpenAI message logs and OpenTelemetry traces.</p>
+  </div>
+
+  <div class="window" aria-label="A sample agent run replaying on a timeline">
+    <div class="wtop"><span class="rec"><i></i>Playback</span><span>Flight: <b id="wName"></b></span><span>Elapsed <b id="wClock">00:00.0</b></span><span>Context <b id="wCtx">0</b> tokens</span></div>
+    <div class="wbody">
+      <div class="tape"><svg id="tape" viewBox="0 0 800 300" role="img" aria-label="Timeline lanes for user, model and tools"></svg></div>
+      <div class="xcript" id="xcript" aria-live="polite"></div>
+    </div>
+    <div class="flagline mono" id="flagline"></div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>What goes on the tape</h2>
+    <p class="sublede">The same channels for every run, so you can line two flights up and see exactly where they split.</p>
+    <table class="params">
+      <thead><tr><th>Channel</th><th>Unit</th><th>Why you want it</th></tr></thead>
+      <tbody>
+        <tr><td>Model calls</td><td class="mono">ms, stop reason</td><td>What the model said, how long it thought, and whether it finished or hit a limit.</td></tr>
+        <tr><td>Tool calls</td><td class="mono">name, input, output</td><td>Every argument and every result, including the errors the agent quietly ignored.</td></tr>
+        <tr><td>Tokens</td><td class="mono">in / out</td><td>Where the context ballooned, and which step made the run expensive.</td></tr>
+        <tr><td>Cost</td><td class="mono">USD, estimated</td><td>Per step and per flight, at the prices you set.</td></tr>
+        <tr><td>Flags</td><td class="mono">loop, error, slow, claim</td><td>Repeated identical calls, error streaks, slow tools, cut-off answers, and actions the model claims without a tool to back them.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="dark">
+  <div class="wrap">
+    <h2>Rewind. Change one thing. Fly it again.</h2>
+    <p class="sublede" style="color:#d8d8d2">Pick any step and fork. Edit the prompt, a tool result or the model, and Blackbox replays the run from there as a new branch you can compare side by side.</p>
+    <div class="forkgrid">
+      <svg viewBox="0 0 640 260" role="img" aria-label="A run splitting into a branch at step 6">
+        <line x1="20" y1="90" x2="620" y2="90" stroke="#5a5a55" stroke-width="3"/>
+        
+        <path d="M260 90 C 320 90, 320 190, 380 190 L 620 190" fill="none" stroke="#5CE1E6" stroke-width="3"/>
+        <g font-family="JetBrains Mono" font-size="12" fill="#bdbdb4">
+          <text x="20" y="66">original</text><text x="420" y="222" fill="#5CE1E6">fork: tool result edited</text><text x="252" y="66" fill="#fff">step 6</text>
+          <text x="540" y="66" fill="#FF3B3B">loop x3</text><text x="560" y="174" fill="#5CE1E6">passes</text>
+        </g>
+        <g id="dotsA"></g>
+        <circle cx="260" cy="90" r="11" fill="none" stroke="#fff" stroke-width="2.5"/>
+      </svg>
+      <ul class="modes">
+        <li><b>Live</b><span>Built-in tools like run_js and fetch_url run for real.</span></li>
+        <li><b>Replay</b><span>If the forked run makes a call it already made, the recorded result comes back.</span></li>
+        <li><b>Simulated</b><span>For anything else, Claude stands in for the tool using the recorded calls as reference. Simulated steps are clearly marked.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The incident report writes itself</h2>
+    <p class="sublede">Built-in detectors catch the obvious failures. Claude reads the whole tape for the rest and writes it up like an investigator.</p>
+    <div class="report" role="figure" aria-label="Sample incident report">
+      <div class="rhead"><div><small>Flight</small><b>Support bot claims a refund it never made</b></div><div><small>Steps</small><b>9</b></div><div><small>Severity</small><span class="sev">High</span></div></div>
+      <div class="rrow"><div>Probable cause</div><div>After three identical lookup_order calls failed with a 503, the model told the customer a refund was issued. No refund tool was ever called.</div></div>
+      <div class="rrow"><div>Contributing factors</div><div><ol><li>Retries had no backoff and no change in input.</li><li>No fallback message for an unavailable orders service.</li><li>The system prompt forbids unissued refunds but nothing enforces it.</li></ol></div></div>
+      <div class="rrow"><div>Recommendations</div><div><ol><li>Cap retries at two with backoff, then hand off to a human.</li><li>Check every "refunded" claim against a successful issue_refund result before sending.</li></ol></div></div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap end">
+    <div>
+      <h2>Bring your tapes</h2>
+      <div class="formats"><span>Anthropic messages</span><span>OpenAI chat + tool calls</span><span>OpenTelemetry GenAI spans</span><span>Blackbox JSON</span></div>
+    </div>
+    <a class="btn" href="app.html">Open the recorder</a>
+  </div>
+</section>
+<footer><span>Blackbox</span><span>Traces stay in your browser unless you fork or analyze them</span></footer>
+
+<script type="module">
+import { SAMPLES, metrics, flags } from './assets/trace.js';
+const tr = SAMPLES[0]; const m = metrics(tr); const F = flags(tr);
+const S = tr.steps.filter(s => s.type !== 'system'); const T = tr.steps.at(-1).t1;
+document.getElementById('wName').textContent = tr.name;
+const W = 800, lanes = { user: 40, model: 110, tool: 180 }, x = (t) => 70 + t / T * 710;
+const svg = document.getElementById('tape');
+let h = `<g font-family="JetBrains Mono" font-size="11" fill="#7b7b74"><text x="0" y="${lanes.user + 4}">USER</text><text x="0" y="${lanes.model + 4}">MODEL</text><text x="0" y="${lanes.tool + 4}">TOOLS</text></g>`;
+for (const y of Object.values(lanes)) h += `<line x1="70" x2="780" y1="${y}" y2="${y}" stroke="#262626"/>`;
+for (const s of S) { const y = lanes[s.type], w = Math.max(3, x(s.t1) - x(s.t0)); const c = s.type === 'model' ? '#FF5F15' : s.type === 'tool' ? (s.tool.isError ? '#FF3B3B' : '#5CE1E6') : '#F6F5F0'; h += `<rect x="${x(s.t0)}" y="${y - 11}" width="${w}" height="22" rx="3" fill="${c}" opacity=".92"/>`; }
+// context area
+const pts = tr.steps.map((s, i) => [x(s.t1), 290 - m.series[i] / m.peak * 60]); h += `<path d="M70 290 ${pts.map(p => 'L' + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')} L780 290 Z" fill="rgba(255,95,21,.16)" stroke="#FF5F15" stroke-width="1.5"/><text x="0" y="262" font-family="JetBrains Mono" font-size="11" fill="#7b7b74">CTX</text>`;
+for (const f of F) { const s = tr.steps[f.at]; h += `<g><line x1="${x(s.t0)}" x2="${x(s.t0)}" y1="8" y2="200" stroke="#FF3B3B" stroke-dasharray="3 3"/><path d="M${x(s.t0) - 6} 4 h12 l-6 9z" fill="#FF3B3B"/></g>`; }
+h += `<line id="ph" x1="70" x2="70" y1="0" y2="292" stroke="#fff" stroke-width="2"/>`;
+svg.innerHTML = h;
+const ph = document.getElementById('ph'), xc = document.getElementById('xcript'), fl = document.getElementById('flagline'), clk = document.getElementById('wClock'), ctx = document.getElementById('wCtx');
+const fmt = (ms) => { const s = ms / 1000; return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
+const line = (s) => { const k = s.type === 'tool' ? (s.tool.isError ? 'err' : 'tool') : s.type; const body = s.type === 'tool' ? `${s.tool.name} → ${String(s.tool.output).split('\n')[0].slice(0, 90)}` : s.type === 'model' ? (s.text || '') + (s.calls?.length ? `${s.text ? '\n' : ''}calls ${s.calls.map(c => c.name).join(', ')}` : '') : s.text; return `<div class="${k}"><span class="t">${fmt(s.t0)}</span> <span class="k ${k}">${s.type.toUpperCase()}</span><p>${body.replace(/</g, '&lt;').slice(0, 220)}</p></div>`; };
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; const DUR = 16000; let start = performance.now(), lastIdx = -1;
+function frame(now) {
+  const t = reduce ? T * .62 : ((now - start) % (DUR + 2200)) / DUR * T; const tt = Math.min(T, t);
+  ph.setAttribute('x1', x(tt)); ph.setAttribute('x2', x(tt)); clk.textContent = fmt(tt);
+  let idx = 0; tr.steps.forEach((s, i) => { if (s.t0 <= tt) idx = i; }); ctx.textContent = Math.round(m.series[idx]).toLocaleString();
+  if (idx !== lastIdx) { lastIdx = idx; const vis = tr.steps.slice(Math.max(1, idx - 2), idx + 1).filter(s => s.type !== 'system'); xc.innerHTML = vis.map((s, i) => line(s).replace('<div class="', `<div class="${i === vis.length - 1 ? 'now ' : ''}`)).join(''); const f = F.filter(f => f.at <= idx).at(-1); fl.textContent = f ? `FLAG  ${f.title}` : 'No flags yet'; }
+  if (!reduce) requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// fork diagram dots
+let d = ''; for (let i = 0; i < 12; i++) d += `<circle cx="${20 + i * 50}" cy="90" r="6" fill="${i >= 9 ? '#FF3B3B' : '#FF5F15'}"/>`; for (let i = 0; i < 5; i++) d += `<circle cx="${400 + i * 50}" cy="190" r="6" fill="#5CE1E6"/>`;
+document.getElementById('dotsA').innerHTML = d;
+</script>
+</body>
+</html>
