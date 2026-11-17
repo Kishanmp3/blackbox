@@ -1,6 +1,6 @@
 import { SAMPLES, importTrace, metrics, flags, toMessages, toolDefs, uid } from './trace.js';
 import { RUNTIME_TOOLS, runtimeDefs, forkExecutor, runAgent } from './recorder.js';
-import { claude, aiStatus, settings, textOf, extractJSON } from './ai-client.js';
+import { claude, aiStatus, textOf, extractJSON, setupKeyUI } from './ai-client.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -132,7 +132,7 @@ const drop = $('#drop'); for (const ev of ['dragenter', 'dragover']) addEventLis
 $('#recTools').innerHTML = RUNTIME_TOOLS.map(t => `<label><input type="checkbox" value="${t.name}" checked><span><code>${t.name}</code><small>${esc(t.description)}</small></span></label>`).join('');
 $('#bRecord').onclick = () => { $('#recErr').hidden = true; $('#dRecord').showModal(); };
 $('#recGo').onclick = async (e) => {
-  e.preventDefault(); const st = await aiStatus(); if (!st.ready) { $('#recErr').hidden = false; $('#recErr').textContent = 'Live recording needs a Claude key. Add one in Settings.'; return; }
+  e.preventDefault(); const st = await aiStatus(); if (!st.ready) { $('#dRecord').close(); keyUI.open('Live recording runs on your own Anthropic API key. Add it, then start the recording again.'); return; }
   const task = $('#recTask').value.trim(), sys = $('#recSys').value.trim(); if (!task) return;
   const names = $$('#recTools input:checked').map(i => i.value); const tools = runtimeDefs().filter(t => names.includes(t.name));
   $('#dRecord').close();
@@ -156,7 +156,7 @@ function openFork() {
   forkCfg = { f, i }; $('#dFork').showModal();
 }
 $('#forkGo').onclick = async (e) => {
-  e.preventDefault(); const st = await aiStatus(); if (!st.ready) { $('#forkErr').hidden = false; $('#forkErr').textContent = 'Forking needs a Claude key. Add one in Settings.'; return; }
+  e.preventDefault(); const st = await aiStatus(); if (!st.ready) { $('#dFork').close(); keyUI.open('Forks are flown by Claude on your own Anthropic API key. Add it, then fork again.'); return; }
   const { f, i } = forkCfg; const s = f.steps[i]; const edited = $('#forkEdit').value;
   let base;
   if (s.type === 'system') { const firstModel = f.steps.findIndex(x => x.type === 'model'); base = f.steps.slice(0, firstModel < 0 ? f.steps.length : firstModel).map(x => x === s ? { ...x, text: edited, id: uid(), forked: true } : x); }
@@ -202,7 +202,7 @@ $('#bReport').onclick = () => { $('#repBody').innerHTML = reportForm(localReport
 $('#repClose').onclick = () => $('#dReport').close();
 function bindGoto() { $$('[data-goto]').forEach(a => a.onclick = (e) => { e.preventDefault(); $('#dReport').close(); select(+a.dataset.goto, true); }); }
 $('#repAI').onclick = async () => {
-  const st = await aiStatus(); if (!st.ready) { toast('The full report needs a Claude key. Add one in Settings.'); return; }
+  const st = await aiStatus(); if (!st.ready) { $('#dReport').close(); keyUI.open('The full report is written by Claude on your own Anthropic API key. Add it, then open the report again.'); return; }
   $('#repAI').disabled = true; $('#repAI').textContent = 'Investigating';
   const f = state.cur; const tape = f.steps.map((s, i) => `#${i + 1} ${s.type.toUpperCase()} t=${fmtT(s.t0)} d=${((s.t1 - s.t0) / 1000).toFixed(1)}s ${s.type === 'tool' ? `${s.tool.name} input=${JSON.stringify(s.tool.input).slice(0, 300)} ${s.tool.isError ? 'ERROR' : 'output'}=${String(s.tool.output).slice(0, 400)}` : s.type === 'model' ? `${(s.text || '').slice(0, 600)}${s.calls?.length ? ` CALLS ${s.calls.map(c => c.name + JSON.stringify(c.input).slice(0, 160)).join('; ')}` : ''}${s.stop ? ` stop=${s.stop}` : ''}` : (s.text || '').slice(0, 600)}`).join('\n');
   try {
@@ -215,8 +215,9 @@ $('#repAI').onclick = async () => {
 
 /* ---------- export & settings ---------- */
 $('#bExport').onclick = () => { const f = state.cur; const blob = new Blob([JSON.stringify({ blackbox: 1, ...f }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${f.name.replace(/\W+/g, '-').toLowerCase().slice(0, 50)}.blackbox.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('Flight exported'); };
-$('#bSettings').onclick = () => { $('#sKey').value = settings.key; $('#sCode').value = settings.code; $('#sModel').value = settings.model; const p = price(); $('#sPin').value = p.in; $('#sPout').value = p.out; $('#dSettings').showModal(); };
-$('#sSave').onclick = () => { settings.key = $('#sKey').value.trim(); settings.code = $('#sCode').value.trim(); settings.model = $('#sModel').value.trim(); LS.set('bb.price', { in: +$('#sPin').value || 0, out: +$('#sPout').value || 0 }); renderGauges(); toast('Settings saved'); };
+const keyUI = setupKeyUI({ dialog: '#dSettings', button: '#bSettings', labels: ['Add API key', 'API key added'], toast });
+$('#bSettings').addEventListener('click', () => { const p = price(); $('#sPin').value = p.in; $('#sPout').value = p.out; });
+$('#sSave').addEventListener('click', () => { LS.set('bb.price', { in: +$('#sPin').value || 0, out: +$('#sPout').value || 0 }); renderGauges(); });
 
 /* ---------- boot ---------- */
 const h = location.hash.slice(1);

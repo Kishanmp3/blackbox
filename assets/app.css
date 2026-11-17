@@ -139,3 +139,6 @@ dialog:has(.report-sheet){width:min(940px,calc(100vw - 32px))}
 @keyframes blink{50%{opacity:.2}}
 @media (max-width:1000px){.shell{grid-template-columns:1fr}.lib{display:none}.lower{grid-template-columns:1fr}.steps{max-height:40vh;border-right:0;border-bottom:1px solid var(--line)}body{overflow:auto}.main{min-height:auto}.acts button{padding:5px 9px;font-size:13px}.flight span{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.kstatus{font-size:13.5px;min-height:1.2em;color:var(--mute)}.kstatus[data-kind=error]{color:#ff9a9a}
+.acts button.needs-key{background:#000;color:var(--orange)}
+.sheet a{color:var(--orange)}

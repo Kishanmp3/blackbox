@@ -87,13 +87,14 @@
 </div></dialog>
 
 <dialog id="dSettings"><form method="dialog" class="sheet">
-  <h2>Settings</h2>
-  <p>Recording, forking and reports use Claude through this site's key, or your own key pasted here (kept in this browser).</p>
-  <label>Anthropic API key<input id="sKey" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
-  <label>Access code (if the owner set one)<input id="sCode" type="password" autocomplete="off"></label>
-  <label>Default model<input id="sModel" placeholder="claude-sonnet-5-5"></label>
+  <h2>Your API key and prices</h2>
+  <p>Blackbox runs on your own Anthropic API key. It's saved only in this browser and sent straight to Anthropic, never to this site's server. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+  <label>Anthropic API key<input id="sKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."></label>
+  <label>Model<input id="sModel" placeholder="claude-sonnet-5-5"></label>
+  <label>Access code<input id="sCode" type="password" autocomplete="off"></label>
   <div class="grid2"><label>Price per 1M input tokens ($)<input id="sPin" type="number" step=".01" min="0"></label><label>Price per 1M output tokens ($)<input id="sPout" type="number" step=".01" min="0"></label></div>
-  <div class="row"><button value="cancel" class="ghost">Close</button><button value="ok" id="sSave" class="go">Save</button></div>
+  <p id="sStatus" class="kstatus" role="status" aria-live="polite"></p>
+  <div class="row"><button type="button" class="ghost" id="sForget">Remove key</button><button value="cancel" class="ghost">Close</button><button value="ok" id="sSave" class="go">Save</button></div>
 </form></dialog>
 <div class="toast" id="toast" role="status"></div>
 <script type="module" src="assets/app.js"></script>
